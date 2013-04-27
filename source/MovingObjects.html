@@ -1,0 +1,246 @@
+<html>
+	<script type="text/javascript" src="Oak3D_v_0_5.js"></script>
+
+	<script type="x-shader/x-fragment" id="shader-fs">
+		precision mediump float;
+
+		varying vec4 vColor;
+
+		void main(void){
+			gl_FragColor = vColor;
+		}
+	</script>
+	
+	<script type="x-shader/x-vertex" id="shader-vs">
+		attribute vec3 aVertexPosition;
+		attribute vec4 aVertexColor;
+
+		uniform mat4 uMVMatrix;
+		uniform mat4 uPMatrix;
+
+		varying vec4 vColor;
+
+  		void main(void){
+			gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+			vColor = aVertexColor;
+		}
+	</script>
+	
+	<script type="text/javascript">
+		var gl;
+		var triangleVertexPositionBuffer;
+		var triangleVertexColorBuffer;
+		var squareVertexPositionBuffer;
+		var squareVertexColorBuffer;
+		var mvMatrix;
+		var pMatrix;
+		var shaderProgram;
+		
+		function setMatrixUniforms() {
+			gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix.toArray());
+			gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix.toArray());
+		}
+		
+		function getShader(gl, id){
+			var shaderScript = document.getElementById(id);
+			var shader;
+			var str = "";
+			var k = shaderScript.firstChild;
+			while(k){
+				if(k.nodeType == 3){
+					str += k.textContent;
+				}
+				k = k.nextSibling;
+			}
+			
+			if(shaderScript.type == "x-shader/x-fragment"){
+				shader = gl.createShader(gl.FRAGMENT_SHADER);
+			} else if(shaderScript.type == "x-shader/x-vertex"){
+				shader = gl.createShader(gl.VERTEX_SHADER);
+			} else {
+				return null;
+			}
+			
+			gl.shaderSource(shader, str);
+			gl.compileShader(shader);
+			
+			return shader;
+		}
+		
+		function initShaders(){
+			var fragmentShader = getShader(gl, "shader-fs");
+			//alert(fragmentShader);
+			var vertexShader = getShader(gl, "shader-vs");
+			//alert(vertexShader);
+			
+			shaderProgram = gl.createProgram();
+			gl.attachShader(shaderProgram, vertexShader);
+			gl.attachShader(shaderProgram, fragmentShader);
+			gl.linkProgram(shaderProgram);
+			//alert(shaderProgram);
+			
+			if(!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)){
+				alert("Initialize shaders error");
+			}
+			
+			gl.useProgram(shaderProgram);
+			
+			shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+			gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+			
+			shaderProgram.vertexColorAttribute = gl.getAttribLocation(shaderProgram, "aVertexColor");
+			gl.enableVertexAttribArray(shaderProgram.vertexColorAttribute);
+			
+			shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+			shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+		}
+		
+		function initGL(canvas){
+			try{
+				gl = canvas.getContext("experimental-webgl");
+				gl.viewportWidth = canvas.width;
+				gl.viewportHeight = canvas.height;
+			} catch (e) {
+				// doing nothing;
+			}
+			if(!gl) {
+				alert("Initialize WebGL error");
+			}
+		}
+		
+		var mvMatrixStack = [];
+		
+		function mvPushMatrix() {
+			var copy = new okMat4();
+			mvMatrix.clone(copy);
+			mvMatrixStack.push(copy);
+		}
+		
+		function mvPopMatrix(){
+			if(mvMatrixStack.length == 0){
+				throw "Invalid popMatrix";
+			}
+			mvMatrix = mvMatrixStack.pop();
+		}
+		
+		var rTri = 0;
+		var rSquare = 0;
+		
+		function drawScene(){
+			gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+			
+			pMatrix = okMat4Proj(45, gl.viewportWidth / gl.viewportHeight, 0.1 ,100.0);
+			mvMatrix = new okMat4();
+			
+			mvPushMatrix();
+			mvMatrix.translate(OAK.SPACE_WORLD, -1.5, 0.0, -7.0, true);
+			mvMatrix.rotX(OAK.SPACE_LOCAL, rTri, true);
+			
+			gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
+			gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, triangleVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+			
+			gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexColorBuffer);
+			gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, triangleVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+			
+			setMatrixUniforms();
+			gl.drawArrays(gl.TRIANGLES, 0, triangleVertexPositionBuffer.numItems);
+			mvPopMatrix();
+			mvPushMatrix();
+			mvMatrix.translate(OAK.SPACE_WORLD, 1.5 ,0.0, -7.0, true);
+			
+			mvMatrix.rotX(OAK.SPACE_LOCAL, rSquare, true);
+			gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
+			gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, squareVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+			gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexColorBuffer);
+			gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, squareVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+			setMatrixUniforms();
+			gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareVertexPositionBuffer.numItems);
+			mvPopMatrix();
+		}
+		
+		var lastTime = 0;
+		
+		function animate(){
+			var timeNow = new Date().getTime();
+			if(lastTime != 0){
+				var elapsed = timeNow - lastTime;
+				
+				rTri += (90 * elapsed) / 1000.0;
+				rSquare += (75 * elapsed) / 1000.0;
+			}
+			lastTime = timeNow;
+		}
+		
+		function initBuffers(){
+			//Triangle Position Buffer
+			triangleVertexPositionBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
+			var vertices = [
+					0.0, 1.0, 0.0,
+				   -1.0, -1.0, 0.0,
+				    1.0, -1.0, 0.0
+			];
+			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+			triangleVertexPositionBuffer.itemSize = 3;
+			triangleVertexPositionBuffer.numItems = 3;
+			
+			//Triangle Color Buffer
+			triangleVertexColorBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexColorBuffer);
+			var colors = [
+					1.0, 0.0, 0.0, 1.0,
+					0.0, 1.0, 0.0, 1.0,
+					0.0, 0.0, 1.0, 1.0
+			];
+			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+			triangleVertexColorBuffer.itemSize = 4;
+			triangleVertexColorBuffer.numItems = 3;
+			
+			//Square Position Buffer
+			squareVertexPositionBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
+			vertices = [
+					1.0, 1.0, 0.0,
+					-1.0, 1.0, 0.0,
+					1.0, -1.0, 0.0,
+					-1.0, -1.0, 0.0
+			];
+			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+			squareVertexPositionBuffer.itemSize = 3;
+			squareVertexPositionBuffer.numItems = 4;
+			
+			//Square Color Buffer
+			squareVertexColorBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexColorBuffer);
+			colors = [];
+			for(var i = 0; i<4; i++){
+				colors = colors.concat([0.5, 0.5, 1.0, 1.0]);
+			}
+			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+			squareVertexColorBuffer.itemSize = 4;
+			squareVertexColorBuffer.numItems = 4;
+		}
+		
+		function tick(){
+			okRequestAnimationFrame(tick);
+			drawScene();
+			animate();
+		}
+	
+		function webGLStart(){
+			var canvas = document.getElementById("example3");
+			initGL(canvas);
+			initShaders();
+			initBuffers();
+			
+			gl.clearColor(0.0, 0.0, 0.0, 1.0);
+			gl.enable(gl.DEPTH_TEST);
+			
+			tick();
+		}
+	</script>
+	<body onload = "webGLStart();">
+		<canvas id = "example3" width="500" height="500"></canvas>
+	</body>
+</html>
